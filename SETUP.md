@@ -21,7 +21,7 @@ Before starting, ensure your local development environment has the following ins
 Open a terminal (Command Prompt, PowerShell, or Git Bash) on your computer and execute:
 
 ```bash
-git clone https://github.com/Dhruvesh-Dabhade/Synco.git
+git clone https://github.com/dhruvesh07/Synco.git
 cd Synco
 ```
 
@@ -163,6 +163,28 @@ Phone acts as the Wi-Fi access point. Desktop connects to phone's hotspot.
 6. **Web Dashboard**:
    - Open `http://localhost:8080?token=<auth-token>` on the desktop browser.
    - The dashboard shows live media telemetry, call/notification logs, and role switch controls.
+
+---
+
+## 🔋 6b. Keeping the Connection Alive in the Background
+
+Synco uses an Android **foreground service** so the connection keeps running even after you **swipe the app away from recents**. However, OEM battery management (especially **Samsung**, but also Xiaomi, OnePlus/OxygenOS, Huawei) can still **kill the process in the background**, which drops the connection until you reopen the app.
+
+> ⚠️ **Samsung users — this step is required.** Without it the connection will not survive backgrounding.
+
+To keep the connection alive:
+
+1. **Open Settings → Apps → Synco → Battery**
+2. Set battery usage to **Unrestricted** (disable "Optimize battery usage" / enable "Never sleeping apps").
+3. Also enable **Allow background activity** if shown.
+
+On Samsung (recommended):
+- **Settings → Battery → Background usage limits → Never sleeping apps → Add Synco.**
+
+**Behavior:**
+- After a normal backgrounding (Home button, or swipe from recents), the foreground service keeps the process + WebSocket alive, so the dashboard stays connected.
+- If the OS still restarts the process, Synco **auto-reconnects** and **auto-re-pairs** using the stored PIN and last-known server address.
+- Only a **Force stop** (long-press → Force stop) fully kills the app — no app can survive that.
 
 ---
 

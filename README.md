@@ -98,9 +98,12 @@ Security is at the foundation of Synco. Communication uses a robust Zero-Trust h
 - **Unified Settings Center**: Toggle app preferences, background service lifecycles, and edit your user profile display name dynamically.
 
 ### 7. Persistent Background Connection
-- Foreground service with indefinite wake lock (refreshed every 4 min) keeps the Android app connected in the background.
-- Automatic reconnection on network loss with exponential backoff.
+- Foreground service with indefinite wake lock (refreshed every 4 min) keeps the Android app connected in the background — even after you swipe the app from recents.
+- Connection graph lives in a **process-lifetime singleton** owned by the `Application` (not tied to any Activity), so it survives the UI being destroyed.
+- Automatic reconnection on network loss with exponential backoff, plus **auto re-pair** from the stored PIN.
+- On process restart, the foreground service (START_STICKY) reconnects and re-pairs to the **last-known server automatically**.
 - Dual heartbeat mechanism (5s interval, 30s timeout) ensures timely disconnection detection.
+- **Note for Samsung/OEM devices:** set Synco to **Unrestricted / Never sleeping apps** in battery settings, or the OS may still kill the background process.
 
 ### 8. Background Desktop Daemon (System Tray + Autostart)
 - The desktop companion runs in the **background with a system tray icon** — right-click for Open Dashboard / Show PIN / Enable or Disable Autostart / Quit.
@@ -119,7 +122,7 @@ Deploying **Synco** is straightforward and requires zero complex configuration.
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/Dhruvesh-Dabhade/Synco.git
+git clone https://github.com/dhruvesh07/Synco.git
 cd Synco
 
 # 2. Build and launch the Desktop Companion
@@ -158,7 +161,8 @@ gradlew :app:assembleDebug
 ```
 ├── app/                      # Android Client Application
 │   ├── src/main/java/        # Clean MVVM Source Code
-│   │   ├── app/              # Application Application Context
+│   │   ├── app/              # Application context (owns the SyncoConnection singleton)
+│   │   ├── sync/             # Process-lifetime SyncoConnection: owns the whole connection graph
 │   │   ├── artwork/          # Local album art caching & binary downscaling
 │   │   ├── crypto/           # AES-GCM & Diffie-Hellman cryptographic providers
 │   │   ├── manager/          # System managers (Call, Bluetooth, Media, Notifications)
