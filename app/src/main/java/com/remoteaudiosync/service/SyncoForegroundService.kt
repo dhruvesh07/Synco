@@ -38,9 +38,19 @@ class SyncoForegroundService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
-        if (action == ACTION_START) {
+        if (action == ACTION_START || (action == null && intent == null)) {
             startServiceForeground()
             acquireWakeLock()
+            // Ensure the process-lifetime connection is running and reconnected to the last known
+            // desktop, so the link survives the app being cleared from recents / the OS restarting
+            // this sticky service. A null intent means the OS re-created us (START_STICKY restart).
+            try {
+                val app = application as com.remoteaudiosync.app.RemoteAudioSyncApp
+                app.syncoConnection.start()
+                app.syncoConnection.reconnectLastServer()
+            } catch (e: Exception) {
+                // Swallow lifecycle races on startup
+            }
         } else if (action == ACTION_STOP) {
             stopServiceForeground()
         }

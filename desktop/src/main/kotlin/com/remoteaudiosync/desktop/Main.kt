@@ -4,6 +4,8 @@ import com.remoteaudiosync.crypto.CryptoManager
 import com.remoteaudiosync.manager.AudioRole
 import com.remoteaudiosync.manager.DefaultAudioOwnerStateManager
 import com.remoteaudiosync.manager.DefaultSourceSwitchManager
+import com.remoteaudiosync.desktop.ui.DesktopToastNotifier
+import com.remoteaudiosync.desktop.ui.DesktopTray
 import com.remoteaudiosync.network.ConnectionState
 import com.remoteaudiosync.network.ReliableChannel
 import com.remoteaudiosync.network.WebSocketClient
@@ -156,6 +158,23 @@ class DesktopAppServer(private val port: Int) {
         callManager = DesktopCallManager(reliableChannel, scope)
         notificationManager = DesktopNotificationManager(reliableChannel, scope)
 
+        // Wire real phone notifications & calls to native desktop alerts (Windows toasts).
+        notificationManager.onNativeToast = { app, title, text, _ ->
+            val heading = app.ifBlank { "Synco" }
+            val body = buildString {
+                if (title.isNotBlank()) {
+                    append(title)
+                    if (text.isNotBlank()) append("\n")
+                }
+                if (text.isNotBlank()) append(text)
+            }.trim()
+            DesktopToastNotifier.notify(heading, body.ifBlank { title })
+        }
+        callManager.onIncomingCall = { callerId ->
+            val id = callerId ?: "Unknown"
+            DesktopToastNotifier.notify("Phone Link · Call", "Calling from $id")
+        }
+
         switchManager = DefaultSourceSwitchManager(
             reliableChannel,
             stateManager,
@@ -278,6 +297,30 @@ class DesktopAppServer(private val port: Int) {
 
         webServer = com.remoteaudiosync.desktop.web.DesktopWebServer(8080, this)
         webServer?.start()
+
+        installTray()
+    }
+
+    private fun installTray() {
+        DesktopTray.onOpenDashboardRequested = { "http://localhost:8080?token=${webServer?.getAuthToken()}" }
+        DesktopTray.onPinRequested = {
+            DesktopToastNotifier.notify("Synco Pairing PIN", "PIN: $pinCode")
+            println("[TRAY] Pairing PIN requested: $pinCode")
+        }
+        DesktopTray.install {
+            println("[INFO] Quit requested from tray. Shutting down...")
+            shutdown()
+        }
+        // Keep running in the background; register to start automatically on login.
+        if (DesktopTray.isSupported()) {
+            DesktopTray.enableAutoStart()
+            println("[TRAY] Autostart enabled (background sync will persist across logins).")
+        }
+    }
+
+    private fun shutdown() {
+        stop()
+        kotlin.system.exitProcess(0)
     }
 
     private fun handleHandshakeMessage(conn: WebSocket, text: String) {
@@ -496,11 +539,17 @@ class DesktopAppServer(private val port: Int) {
         mediaManager.cleanup()
         callManager.stop()
         notificationManager.stop()
+        DesktopTray.remove()
     }
 
     fun isConnected(): Boolean = isPairedAndAuthenticated
     fun isAudioOwner(): Boolean = stateManager.currentRole.value == AudioRole.ACTIVE_AUDIO_OWNER
     fun getMediaState(): MediaStatePayload? = mediaManager.mediaState.value
+    fun getNotifications(): List<NotificationStatePayload> = notificationManager.notifications.value
+    fun getCallState(): String = callManager.callState.value
+    fun getCallerId(): String? = callManager.callerId.value
+    fun getCurrentArtworkId(): String? = mediaManager.currentArtworkId.value
+    fun getArtwork(id: String): ByteArray? = mediaManager.getArtwork(id)
 
     fun triggerPlay() {
         mediaManager.sendCommand("PLAY")
@@ -618,6 +667,10 @@ fun main() {
                 println("                        example: 'notif ADDED 101 Spotify \"Now Playing\"'")
                 println("  exit / q            - Shut down server and exit")
                 println("  help                - Display this menu\n")
+                println("Background: Real phone notifications & calls surface as native Windows")
+                println("  toasts. A tray icon is active (right-click for Open Dashboard /")
+                println("  PIN / Autostart / Quit). Autostart on login is registered so the")
+                println("  daemon keeps syncing in the background.\n")
             }
             "play", "p" -> appServer.triggerPlay()
             "pause", "s" -> appServer.triggerPause()
@@ -655,6 +708,7 @@ fun main() {
             "exit", "q", "quit" -> {
                 println("[INFO] Shutting down Server...")
                 appServer.stop()
+                DesktopTray.remove()
                 println("[INFO] Server stopped. Goodbye!")
                 break
             }

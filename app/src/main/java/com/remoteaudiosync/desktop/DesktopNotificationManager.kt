@@ -20,6 +20,9 @@ class DesktopNotificationManager(
     private val _isPermissionMissing = MutableStateFlow(false)
     val isPermissionMissing: StateFlow<Boolean> = _isPermissionMissing.asStateFlow()
 
+    /** Hook for surfacing real phone notifications on the native OS (e.g. Windows toasts). */
+    var onNativeToast: ((appName: String, title: String, text: String, packageName: String) -> Unit)? = null
+
     private var packetCollectorJob: Job? = null
 
     init {
@@ -63,6 +66,10 @@ class DesktopNotificationManager(
                 // Add or update
                 val newList = currentList.filter { it.id != payload.id } + payload
                 _notifications.value = newList
+
+                // Surface real phone notifications on the native OS with full context
+                val app = if (payload.appName.isNotBlank()) payload.appName else payload.packageName
+                onNativeToast?.invoke(app, payload.title, payload.text, payload.packageName)
             }
             "REMOVED" -> {
                 val newList = _notifications.value.filter { it.id != payload.id }

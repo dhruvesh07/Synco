@@ -118,8 +118,20 @@ class PairingManager(
         cryptoManager.deriveSessionKey(remoteEphemeralPubKey)
         
         trustedDeviceManager.saveTrustedDevice(pairResponsePacket.senderId, pairResponsePayload.publicKey)
+        // Remember the PIN so we can transparently re-pair after a drop / reconnect.
+        trustedDeviceManager.savePairPin(pin)
         
         return PairingResult.Success
+    }
+
+    /**
+     * Re-runs the full pairing handshake after the transport reconnects, using a PIN that
+     * was already accepted for this trusted device. This restores the secure, authenticated
+     * channel automatically so media commands (play/next/prev) keep working without the user
+     * having to re-enter the PIN.
+     */
+    suspend fun autoReconnect(pin: String): PairingResult {
+        return initiatePairing(pin)
     }
 }
 

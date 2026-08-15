@@ -82,7 +82,9 @@ Security is at the foundation of Synco. Communication uses a robust Zero-Trust h
 
 ### 4. Native Phone Call & Notification Mirroring
 - Intercept and securely forward notifications from selected apps to the desktop screen immediately.
+- Full-fidelity capture: big text, messaging-style conversation lines, sub text, and channel category for every phone notification.
 - Real-time caller identity translation, active call state updates, and ring detection mapped straight to the desktop terminal.
+- Real phone notifications and incoming calls surface as **native Windows toasts** (Action Center), so nothing is missed even when the dashboard is closed.
 
 ### 5. Simulation Controls (Web Dashboard)
 - Test call and notification mirroring with simulated events.
@@ -99,6 +101,11 @@ Security is at the foundation of Synco. Communication uses a robust Zero-Trust h
 - Foreground service with indefinite wake lock (refreshed every 4 min) keeps the Android app connected in the background.
 - Automatic reconnection on network loss with exponential backoff.
 - Dual heartbeat mechanism (5s interval, 30s timeout) ensures timely disconnection detection.
+
+### 8. Background Desktop Daemon (System Tray + Autostart)
+- The desktop companion runs in the **background with a system tray icon** — right-click for Open Dashboard / Show PIN / Enable or Disable Autostart / Quit.
+- **Autostart on Windows login** (HKCU Run key) so Synco keeps syncing the moment you sign in — you never miss a notification or call.
+- Real phone notifications and incoming calls are delivered as **native Windows toasts** (WinRT Action Center), with automatic AUMID shortcut registration for reliable delivery and a tray-balloon fallback.
 
 ---
 

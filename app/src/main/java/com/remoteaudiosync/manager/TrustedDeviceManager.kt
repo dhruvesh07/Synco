@@ -28,4 +28,18 @@ class TrustedDeviceManager(context: Context) {
     fun isTrusted(deviceId: String): Boolean {
         return prefs.contains(deviceId)
     }
+
+    // Store the pairing PIN (encrypted) so the client can transparently re-authenticate
+    // after the WebSocket drops / reconnects, without forcing the user to re-enter it.
+    fun savePairPin(pin: String) {
+        prefs.edit().putString("last_pair_pin", pin).apply()
+    }
+
+    fun getPairPin(): String? {
+        return prefs.getString("last_pair_pin", null)
+    }
+
+    fun hasStoredPin(): Boolean {
+        return prefs.contains("last_pair_pin")
+    }
 }

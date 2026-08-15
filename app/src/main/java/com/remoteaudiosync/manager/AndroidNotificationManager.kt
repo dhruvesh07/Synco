@@ -52,9 +52,10 @@ class DefaultAndroidNotificationManager(
             packageName: String,
             appName: String,
             timestamp: Long,
-            isOngoing: Boolean
+            isOngoing: Boolean,
+            category: String
         ) {
-            val hash = (title + text + packageName + appName + timestamp.toString() + isOngoing.toString()).hashCode()
+            val hash = listOf(title, text, packageName, appName, isOngoing, category).hashCode()
             if (sentNotificationHashes[id] == hash) {
                 // Deduplicate: Never resend identical notifications
                 return

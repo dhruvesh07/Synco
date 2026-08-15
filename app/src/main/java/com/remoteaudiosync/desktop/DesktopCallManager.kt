@@ -23,7 +23,11 @@ class DesktopCallManager(
     private val _callerId = MutableStateFlow<String?>(null)
     val callerId: StateFlow<String?> = _callerId.asStateFlow()
 
+    /** Hook for surfacing real incoming calls on the native OS (e.g. Windows toasts/popup). */
+    var onIncomingCall: ((callerId: String?) -> Unit)? = null
+
     private var packetCollectorJob: Job? = null
+    private var lastNotifiedState: String? = null
 
     init {
         startListening()
@@ -42,10 +46,23 @@ class DesktopCallManager(
                     if (payload != null) {
                         _callState.value = payload.state
                         _callerId.value = payload.callerId
+                        maybeNotify(payload.state, payload.callerId)
                     }
                 }
             }
         }
+    }
+
+    private fun maybeNotify(state: String, callerId: String?) {
+        // Notify only on state transitions that matter to the user, never spam.
+        val notifyState = when (state.lowercase()) {
+            "ringing", "incoming", "active", "answered", "offhook" -> state.lowercase()
+            else -> null
+        } ?: return
+
+        if (lastNotifiedState == notifyState) return
+        lastNotifiedState = notifyState
+        onIncomingCall?.invoke(callerId)
     }
 
     fun sendCommand(command: String) {

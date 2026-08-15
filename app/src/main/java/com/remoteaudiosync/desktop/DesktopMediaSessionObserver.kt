@@ -102,7 +102,7 @@ class DefaultDesktopMediaSessionObserver : DesktopMediaSessionObserver {
                 val output = executeCommand(listOf("powershell", "-NoProfile", "-Command", script))?.trim()
                 if (output != null && output.contains("|")) {
                     val parts = output.split("|")
-                    if (parts.size >= 3) {
+                    if (parts.size >= 3 && parts[0].isNotBlank()) {
                         return MediaStatePayload(
                             title = parts[0].takeIf { it.isNotBlank() } ?: "Unknown",
                             artist = parts[1].takeIf { it.isNotBlank() } ?: "Unknown",
@@ -115,16 +115,9 @@ class DefaultDesktopMediaSessionObserver : DesktopMediaSessionObserver {
                         )
                     }
                 }
-                return MediaStatePayload(
-                    title = "Desktop Audio",
-                    artist = "System",
-                    isPlaying = true,
-                    position = 0,
-                    duration = -1,
-                    appName = "Windows",
-                    volume = 100,
-                    isMuted = false
-                )
+                // No real Windows media session: report a clean idle state instead of fabricating a
+                // fake "Desktop Audio / Playing" track, so the dashboard honestly shows nothing playing.
+                return null
             }
         } catch (e: Exception) {
             // Graceful error fallback

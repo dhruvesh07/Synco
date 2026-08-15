@@ -6,6 +6,8 @@ import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
+import android.os.Handler
+import android.os.Looper
 import androidx.core.app.NotificationManagerCompat
 import com.remoteaudiosync.network.ReliableChannel
 import com.remoteaudiosync.protocol.MediaCommandPayload
@@ -66,22 +68,37 @@ class MediaManager(
         if (isAudioOwner) {
             checkPermission()
             if (_hasNotificationPermission.value) {
-                try {
-                    val component = MediaNotificationListenerService.getComponentName(context)
-                    mediaSessionManager.addOnActiveSessionsChangedListener(sessionListener, component)
-                    updateActiveSession(mediaSessionManager.getActiveSessions(component))
-                    startPeriodicUpdate()
-                } catch (e: SecurityException) {
-                    _hasNotificationPermission.value = false
+                // MediaSessionManager calls must run on a thread with a Looper (main thread).
+                postOnMainThread {
+                    try {
+                        val component = MediaNotificationListenerService.getComponentName(context)
+                        mediaSessionManager.addOnActiveSessionsChangedListener(sessionListener, component)
+                        updateActiveSession(mediaSessionManager.getActiveSessions(component))
+                        startPeriodicUpdate()
+                    } catch (e: SecurityException) {
+                        _hasNotificationPermission.value = false
+                    } catch (e: RuntimeException) {
+                        _hasNotificationPermission.value = false
+                    }
                 }
             }
         } else {
-            try {
-                mediaSessionManager.removeOnActiveSessionsChangedListener(sessionListener)
-            } catch (e: Exception) {}
-            activeController?.unregisterCallback(controllerCallback)
-            activeController = null
-            stopPeriodicUpdate()
+            postOnMainThread {
+                try {
+                    mediaSessionManager.removeOnActiveSessionsChangedListener(sessionListener)
+                } catch (e: Exception) {}
+                activeController?.unregisterCallback(controllerCallback)
+                activeController = null
+                stopPeriodicUpdate()
+            }
+        }
+    }
+
+    private fun postOnMainThread(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            block()
+        } else {
+            Handler(Looper.getMainLooper()).post(block)
         }
     }
 
