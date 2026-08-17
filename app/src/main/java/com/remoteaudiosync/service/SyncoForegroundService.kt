@@ -30,34 +30,47 @@ class SyncoForegroundService : Service() {
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var wakeLockRefreshJob: kotlinx.coroutines.Job? = null
+    private var isForeground = false
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        // Belt-and-suspenders: promote to foreground as early as possible so a delayed
+        // onStartCommand (or a START_STICKY restart with a null intent) can never trip
+        // ForegroundServiceDidNotStartInTimeException.
+        if (!isForeground) {
+            startServiceForeground()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
-        if (action == ACTION_START || (action == null && intent == null)) {
-            startServiceForeground()
-            acquireWakeLock()
-            // Ensure the process-lifetime connection is running and reconnected to the last known
-            // desktop, so the link survives the app being cleared from recents / the OS restarting
-            // this sticky service. A null intent means the OS re-created us (START_STICKY restart).
-            try {
-                val app = application as com.remoteaudiosync.app.RemoteAudioSyncApp
-                app.syncoConnection.start()
-                app.syncoConnection.reconnectLastServer()
-            } catch (e: Exception) {
-                // Swallow lifecycle races on startup
-            }
-        } else if (action == ACTION_STOP) {
+        if (action == ACTION_STOP) {
             stopServiceForeground()
+            return START_NOT_STICKY
+        }
+        // ACTION_START, null intent (START_STICKY restart) or any other intent must keep us
+        // foreground. Always promote FIRST so the system's startForegroundService() timeout
+        // is satisfied no matter what happens afterwards.
+        if (!isForeground) {
+            startServiceForeground()
+        }
+        acquireWakeLock()
+        // Ensure the process-lifetime connection is running and reconnected to the last known
+        // desktop, so the link survives the app being cleared from recents / the OS restarting
+        // this sticky service. A null intent means the OS re-created us (START_STICKY restart).
+        try {
+            val app = application as com.remoteaudiosync.app.RemoteAudioSyncApp
+            app.syncoConnection.start()
+            app.syncoConnection.reconnectLastServer()
+        } catch (e: Exception) {
+            // Swallow lifecycle races on startup
         }
         return START_STICKY
     }
 
     private fun startServiceForeground() {
+        if (isForeground) return
         val notificationIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
@@ -78,14 +91,20 @@ class SyncoForegroundService : Service() {
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+            isForeground = true
+        } catch (e: Exception) {
+            // A SecurityException (missing type) or missing permission here would otherwise crash.
+            isForeground = false
         }
     }
 
@@ -121,6 +140,7 @@ class SyncoForegroundService : Service() {
     }
 
     private fun stopServiceForeground() {
+        isForeground = false
         releaseWakeLock()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()

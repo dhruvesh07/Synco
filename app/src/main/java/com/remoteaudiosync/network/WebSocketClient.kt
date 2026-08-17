@@ -32,8 +32,11 @@ class WebSocketClient {
     val messages = _messages.asSharedFlow()
 
     fun connect(ip: String, port: Int) {
+        // A stale Connecting/Connected socket (e.g. after a process restart or a rejected
+        // handshake) must not silently swallow a new connect() request. Tear it down first.
         if (_connectionState.value is ConnectionState.Connecting || _connectionState.value is ConnectionState.Connected) {
-            return
+            webSocket?.cancel()
+            webSocket = null
         }
 
         _connectionState.value = ConnectionState.Connecting

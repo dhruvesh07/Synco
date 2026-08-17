@@ -60,6 +60,13 @@ class SyncoConnection(private val application: Application) {
         set(value) { settingsPrefs.edit().putInt("last_server_port", value).apply() }
     private var userDisconnected = false
 
+    // Foreground service lifecycle. We start it once and keep it running across the
+    // auto-reconnect loop; stopping/restarting it per state transition races the system's
+    // 5s startForegroundService timeout and crashes with ForegroundServiceDidNotStartInTimeException.
+    private val fgsStarted = java.util.concurrent.atomic.AtomicBoolean(false)
+    private var reconnectAttempts = 0
+    private val MAX_AUTO_RECONNECTS = 5
+
     val artworkCache = com.remoteaudiosync.artwork.ArtworkCache(application)
     val artworkManager = com.remoteaudiosync.artwork.ArtworkManager(reliableChannel, artworkCache, null, scope)
     val mediaManager = com.remoteaudiosync.manager.MediaManager(application, reliableChannel, scope, artworkCache)
@@ -146,20 +153,22 @@ class SyncoConnection(private val application: Application) {
                             state is ConnectionState.Connecting ||
                             state is ConnectionState.Reconnecting ||
                             state is ConnectionState.WaitingForAck
-                    try {
-                        if (active) {
+                    // Start the foreground service ONCE and keep it running for the whole
+                    // connection lifecycle. Stopping it on every transient Disconnected/Failed
+                    // emission and restarting it from the auto-reconnect loop races the system's
+                    // 5s startForegroundService timeout -> ForegroundServiceDidNotStartInTimeException.
+                    if (active && !fgsStarted.get()) {
+                        fgsStarted.set(true)
+                        try {
                             val intent = Intent(application, SyncoForegroundService::class.java).apply {
                                 action = SyncoForegroundService.ACTION_START
                             }
                             application.startForegroundService(intent)
-                        } else {
-                            val intent = Intent(application, SyncoForegroundService::class.java).apply {
-                                action = SyncoForegroundService.ACTION_STOP
-                            }
-                            application.startService(intent)
+                        } catch (e: Exception) {
+                            // Suppress background start exceptions (Android 12+ background-start
+                            // restriction). Keep the flag so we don't retry every emission.
+                            fgsStarted.set(false)
                         }
-                    } catch (e: Exception) {
-                        // Suppress background start exceptions
                     }
                 }
             }
@@ -190,6 +199,7 @@ class SyncoConnection(private val application: Application) {
             launch {
                 webSocketClient.connectionState.collect { state ->
                     if (state is ConnectionState.Connected) {
+                        reconnectAttempts = 0
                         val storedPin = trustedDeviceManager.getPairPin()
                         if (storedPin != null && !reliableChannel.isAuthenticated.value) {
                             _pairingStatus.value = "Re-pairing..."
@@ -200,7 +210,17 @@ class SyncoConnection(private val application: Application) {
                                 }
                                 is PairingResult.Failed -> {
                                     reliableChannel.setAuthenticated(false)
-                                    _pairingStatus.value = "Re-pair failed: ${result.reason}"
+                                    // The desktop generates a fresh 6-digit PIN on every launch,
+                                    // so a stored PIN can quickly become stale. Do NOT keep
+                                    // retrying a rejected PIN forever — that loops the FGS
+                                    // start/stop churn. Clear it and ask the user for the
+                                    // current PIN shown in the desktop app.
+                                    if (result.reason.contains("REJECTED", ignoreCase = true)) {
+                                        trustedDeviceManager.clearPairPin()
+                                        _pairingStatus.value = "Pairing rejected: PIN changed on the PC. Enter the current PIN shown in Synco on your computer."
+                                    } else {
+                                        _pairingStatus.value = "Re-pair failed: ${result.reason}"
+                                    }
                                 }
                             }
                         }
@@ -208,7 +228,14 @@ class SyncoConnection(private val application: Application) {
                         && !userDisconnected && trustedDeviceManager.hasStoredPin()) {
                         val ip = lastServerIp
                         if (ip != null) {
-                            _pairingStatus.value = "Reconnecting..."
+                            reconnectAttempts++
+                            if (reconnectAttempts > MAX_AUTO_RECONNECTS) {
+                                // Stop hammering the server; surface the error and wait for the
+                                // user to re-enter the IP / PIN.
+                                _pairingStatus.value = "Connection failed. Enter the IP shown on the PC to retry."
+                                return@collect
+                            }
+                            _pairingStatus.value = "Reconnecting... ($reconnectAttempts/$MAX_AUTO_RECONNECTS)"
                             delay(3000L)
                             reliableChannel.connect(ip, lastServerPort)
                         }
@@ -238,6 +265,7 @@ class SyncoConnection(private val application: Application) {
     fun connect(ip: String, port: Int) {
         if (ip.isNotBlank()) {
             userDisconnected = false
+            reconnectAttempts = 0
             lastServerIp = ip
             lastServerPort = port
             reliableChannel.connect(ip, port)
@@ -248,14 +276,30 @@ class SyncoConnection(private val application: Application) {
     fun reconnectLastServer() {
         val ip = lastServerIp
         if (ip != null && !userDisconnected) {
+            reconnectAttempts = 0
             reliableChannel.connect(ip, lastServerPort)
         }
     }
 
     fun disconnect() {
         userDisconnected = true
+        reconnectAttempts = 0
         reliableChannel.disconnect()
         _pairingStatus.value = ""
+        stopForegroundService()
+    }
+
+    private fun stopForegroundService() {
+        if (fgsStarted.getAndSet(false)) {
+            try {
+                val intent = Intent(application, SyncoForegroundService::class.java).apply {
+                    action = SyncoForegroundService.ACTION_STOP
+                }
+                application.startService(intent)
+            } catch (e: Exception) {
+                // Suppress background start exceptions
+            }
+        }
     }
 
     fun initiatePairing(pin: String) {

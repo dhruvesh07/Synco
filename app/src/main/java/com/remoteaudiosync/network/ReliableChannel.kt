@@ -277,7 +277,7 @@ open class ReliableChannel(
         heartbeatMonitorJob = coroutineScope.launch {
             while (isActive) {
                 delay(1000L)
-                if (timeProvider() - lastHeartbeatReceived > 30000L) {
+                if (timeProvider() - lastHeartbeatReceived > 10000L) {
                     log("Heartbeat timeout")
                     _connectionState.value = ConnectionState.Lost
                     reconnect()

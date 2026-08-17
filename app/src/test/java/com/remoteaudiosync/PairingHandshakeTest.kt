@@ -32,6 +32,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.mockito.kotlin.any
+import org.mockito.kotlin.mock
 import org.robolectric.RobolectricTestRunner
 import java.security.SecureRandom
 import java.util.UUID
@@ -55,7 +57,23 @@ class PairingHandshakeTest {
         mockWebServer.start()
 
         val context = ApplicationProvider.getApplicationContext<Context>()
-        trustedDeviceManager = TrustedDeviceManager(context)
+
+        val trustedDevices = mutableMapOf<String, String>()
+        trustedDeviceManager = mock<TrustedDeviceManager> {
+            on { saveTrustedDevice(any(), any()) }.thenAnswer { inv ->
+                trustedDevices[inv.getArgument<String>(0)] = inv.getArgument<String>(1)
+            }
+            on { isTrusted(any()) }.thenAnswer { inv ->
+                trustedDevices.containsKey(inv.getArgument<String>(0))
+            }
+            on { getTrustedDevicePublicKey(any()) }.thenAnswer { inv ->
+                trustedDevices[inv.getArgument<String>(0)]
+            }
+            on { savePairPin(any()) }.thenAnswer { }
+            on { getPairPin() }.thenReturn(null)
+            on { hasStoredPin() }.thenReturn(false)
+            on { clearPairPin() }.thenAnswer { }
+        }
         
         val testPrefs = context.getSharedPreferences("test_identity_prefs", Context.MODE_PRIVATE)
         identityKeyStore = IdentityKeyStore(context, testPrefs)

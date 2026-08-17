@@ -42,4 +42,8 @@ class TrustedDeviceManager(context: Context) {
     fun hasStoredPin(): Boolean {
         return prefs.contains("last_pair_pin")
     }
+
+    fun clearPairPin() {
+        prefs.edit().remove("last_pair_pin").apply()
+    }
 }

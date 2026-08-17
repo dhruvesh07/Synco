@@ -73,19 +73,50 @@ The desktop also starts a web-based control panel on port **8080**:
 
 ### 🔍 3. Retrieve Your Desktop's Local IP Address
 
-#### On Windows (PowerShell/Command Prompt):
-```powershell
+The IP you need is the one on the same network the phone will reach — **Wi-Fi** (Option A) or the **hotspot** interface (Option B).
+
+#### On Windows
+
+Quick filter (Command Prompt):
+```cmd
+ipconfig | findstr /i "IPv4"
+```
+
+Full, adapter-by-adapter (Command Prompt):
+```cmd
 ipconfig
 ```
-Look for the active adapter — either **Wireless LAN adapter Wi-Fi** (router) or **Ethernet adapter** (hotspot connection). Locate the **IPv4 Address** (e.g., `192.168.1.45` or `10.203.177.173`).
+Look for:
+- **Wireless LAN adapter Wi-Fi** → the IPv4 address when both devices are on the same router (Option A), e.g. `192.168.1.45`.
+- **Ethernet adapter** / **Wireless LAN adapter** that shows a `192.168.43.x`, `192.168.x.x`, or `10.x.x.x` style address → this is the hotspot connection (Option B), e.g. `192.168.43.123`.
 
-#### On Linux / macOS (Terminal):
+Cleaner PowerShell view (only real IPv4 addresses, no loopback/link-local noise):
+```powershell
+Get-NetIPAddress -AddressFamily IPv4 |
+  Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.254.*" -and $_.IPAddress -ne "0.0.0.0" } |
+  Format-Table InterfaceAlias, IPAddress -AutoSize
+```
+The row whose `InterfaceAlias` matches your active Wi-Fi adapter is the IP to enter in the app.
+
+#### On Linux
+
 ```bash
-ip a | grep inet
+hostname -I
 # or
+ip -4 addr show | grep inet
+```
+Exclude `127.0.0.1` (loopback). The remaining private address (`192.168.x.x`, `10.x.x.x`, or `172.16-31.x.x`) is what the phone should connect to.
+
+#### On macOS
+
+```bash
+ipconfig getifaddr en0    # Wi-Fi adapter (most Macs)
+# or list every adapter:
 ifconfig | grep "inet "
 ```
-Look for your active wireless or ethernet adapter address (excluding `127.0.0.1`).
+Exclude `127.0.0.1`. Use the address on the active Wi-Fi or hotspot interface.
+
+> **Verification:** From your phone's browser, visit `http://<desktop-ip>:8080` — if the Synco web dashboard prompts for the auth token, the IP is reachable and correct.
 
 ---
 
@@ -120,7 +151,7 @@ Both devices connected to the same router. Best for home/office use.
 [Phone] ──── WiFi Router ──── [Desktop]
 ```
 
-1. Find desktop IP via `ipconfig` (Step 3).
+1. Find desktop IP via **Step 3** (Wi-Fi adapter, e.g. `ipconfig | findstr /i IPv4` on Windows or `hostname -I` on Linux).
 2. Launch the Synco app on your phone.
 3. Enter the desktop **IP address** and **Port (8765)**.
 4. Enter the **6-digit PIN** from the desktop terminal.
@@ -135,7 +166,7 @@ Phone acts as the Wi-Fi access point. Desktop connects to phone's hotspot.
 
 1. Enable **Mobile Hotspot** on your phone (Settings → Connections → Mobile Hotspot).
 2. Connect your desktop to the phone's hotspot WiFi network.
-3. Run `ipconfig` on the desktop — look for the hotspot adapter's IP. It will be in `192.168.x.x` or `10.x.x.x` range.
+3. Find the desktop's IP on the **hotspot interface** (Step 3). Run the IP command and look for the adapter that shows a `192.168.43.x`, `192.168.x.x`, or `10.x.x.x` address — that is the hotspot-issued IP.
 4. Enter that **IP** and **Port (8765)** in the Synco app on the **same phone**.
 5. Enter the **6-digit PIN**.
 6. Tap **Sync & Connect**.
@@ -156,7 +187,7 @@ Phone acts as the Wi-Fi access point. Desktop connects to phone's hotspot.
    - Tap the glowing profile circle in the top right to enter Settings.
    - Input your name (e.g., `John Doe`). The dashboard header will display your initials (`JD`).
 5. **Connect to Host**:
-   - Enter your Desktop's **IPv4 Address** and **Port** (`8765`).
+   - Enter your Desktop's **IPv4 Address** (from **Step 3** — the Wi-Fi or hotspot interface) and **Port** (`8765`).
    - Enter the **6-digit PIN** displayed on the desktop terminal.
    - The system performs a secure **X25519 Diffie-Hellman key exchange** with **Ed25519 digital signatures** to derive a shared AES-256-GCM session key.
    - Tap **Sync & Connect**. If the PIN is correct, pairing succeeds and all packets are encrypted end-to-end.

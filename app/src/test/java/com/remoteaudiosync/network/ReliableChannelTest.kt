@@ -34,7 +34,7 @@ class ReliableChannelTest {
     @Test
     fun `test ACK success`() = runTest {
         val reliableChannel = ReliableChannel(webSocketClient, cryptoManager, backgroundScope) { currentTime }
-        val packet = Packet(1, UUID.randomUUID().toString(), 0L, "s", "r", PacketType.MEDIA_COMMAND)
+        val packet = Packet(1, UUID.randomUUID().toString(), System.currentTimeMillis(), "s", "r", PacketType.MEDIA_COMMAND)
         
         val sendDeferred = async {
             reliableChannel.sendWithAck(packet)
@@ -44,7 +44,7 @@ class ReliableChannelTest {
         advanceTimeBy(100)
         
         val ackPayload = com.remoteaudiosync.protocol.AckPayload(originalPacketId = packet.id)
-        val ackPacket = Packet(1, UUID.randomUUID().toString(), 0L, "r", "s", PacketType.ACK, ackPayload)
+        val ackPacket = Packet(1, UUID.randomUUID().toString(), System.currentTimeMillis(), "r", "s", PacketType.ACK, ackPayload)
         
         val ackJson = PacketCodec.serialize(ackPacket)
         
@@ -59,7 +59,7 @@ class ReliableChannelTest {
     @Test
     fun `test ACK timeout and retry`() = runTest {
         val reliableChannel = ReliableChannel(webSocketClient, cryptoManager, backgroundScope) { currentTime }
-        val packet = Packet(1, UUID.randomUUID().toString(), 0L, "s", "r", PacketType.MEDIA_COMMAND)
+        val packet = Packet(1, UUID.randomUUID().toString(), System.currentTimeMillis(), "s", "r", PacketType.MEDIA_COMMAND)
         
         val sendDeferred = async {
             reliableChannel.sendWithAck(packet)
@@ -69,7 +69,7 @@ class ReliableChannelTest {
         advanceTimeBy(850) // 1st timeout
         
         val ackPayload = com.remoteaudiosync.protocol.AckPayload(originalPacketId = packet.id)
-        val ackPacket = Packet(1, UUID.randomUUID().toString(), 0L, "r", "s", PacketType.ACK, ackPayload)
+        val ackPacket = Packet(1, UUID.randomUUID().toString(), System.currentTimeMillis(), "r", "s", PacketType.ACK, ackPayload)
         val ackJson = PacketCodec.serialize(ackPacket) as com.remoteaudiosync.protocol.ProtocolResult.Success
         
         val field = webSocketClient.javaClass.getDeclaredField("_messages")
@@ -83,7 +83,7 @@ class ReliableChannelTest {
     @Test
     fun `test Retry exhausted`() = runTest {
         val reliableChannel = ReliableChannel(webSocketClient, cryptoManager, backgroundScope) { currentTime }
-        val packet = Packet(1, UUID.randomUUID().toString(), 0L, "s", "r", PacketType.MEDIA_COMMAND)
+        val packet = Packet(1, UUID.randomUUID().toString(), System.currentTimeMillis(), "s", "r", PacketType.MEDIA_COMMAND)
         
         val sendDeferred = async {
             reliableChannel.sendWithAck(packet)
@@ -136,8 +136,8 @@ class ReliableChannelTest {
     @Test
     fun `test Packet router and multiple subscribers`() = runTest {
         val reliableChannel = ReliableChannel(webSocketClient, cryptoManager, backgroundScope) { currentTime }
-        val packet1 = Packet(1, UUID.randomUUID().toString(), 0L, "s", "r", PacketType.MEDIA_COMMAND)
-        val packet2 = Packet(1, UUID.randomUUID().toString(), 0L, "s", "r", PacketType.MEDIA_STATE)
+        val packet1 = Packet(1, UUID.randomUUID().toString(), System.currentTimeMillis(), "s", "r", PacketType.MEDIA_COMMAND, com.remoteaudiosync.protocol.MediaCommandPayload(command = "play"))
+        val packet2 = Packet(1, UUID.randomUUID().toString(), System.currentTimeMillis(), "s", "r", PacketType.MEDIA_STATE, com.remoteaudiosync.protocol.MediaStatePayload(title = "t", artist = "a", isPlaying = false, position = 0, duration = 0))
         
         val sub1 = async { reliableChannel.incomingPackets.take(2).toList() }
         val sub2 = async { reliableChannel.incomingPackets.take(2).toList() }
@@ -167,7 +167,7 @@ class ReliableChannelTest {
     fun `test Duplicate ACK`() = runTest {
         val reliableChannel = ReliableChannel(webSocketClient, cryptoManager, backgroundScope) { currentTime }
         val ackPayload = com.remoteaudiosync.protocol.AckPayload(originalPacketId = "someId")
-        val ackPacket = Packet(1, UUID.randomUUID().toString(), 0L, "r", "s", PacketType.ACK, ackPayload)
+        val ackPacket = Packet(1, UUID.randomUUID().toString(), System.currentTimeMillis(), "r", "s", PacketType.ACK, ackPayload)
         val ackJson = (PacketCodec.serialize(ackPacket) as com.remoteaudiosync.protocol.ProtocolResult.Success).data
         
         val field = webSocketClient.javaClass.getDeclaredField("_messages")
@@ -212,6 +212,6 @@ class ReliableChannelTest {
         flow.emit("invalid json")
         runCurrent()
         
-        assertTrue("Expected 'Unknown packet' in logs, got: $logs", logs.contains("Unknown packet"))
+        assertTrue("Expected 'Malformed packet received' in logs, got: $logs", logs.contains("Malformed packet received"))
     }
 }

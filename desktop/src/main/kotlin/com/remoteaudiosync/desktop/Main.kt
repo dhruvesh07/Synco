@@ -199,12 +199,18 @@ class DesktopAppServer(private val port: Int) {
                     }
                 }
                 if (activeWebSocket != null && activeWebSocket != conn) {
-                    println("[SERVER] Rejecting secondary connection from ${conn.remoteSocketAddress}")
-                    conn.close(1013, "Server busy with active client")
-                    return
+                    // A previous socket that never fired onClose (e.g. the phone's process was
+                    // killed) would otherwise reject every reconnect with "Server busy with
+                    // active client", which the phone surfaces as "connection rejected". Take
+                    // over instead: close the stale socket and accept the fresh connection.
+                    val stale = activeWebSocket
+                    println("[SERVER] Replacing stale connection from ${stale?.remoteSocketAddress}")
+                    activeWebSocket = null
+                    stale?.close(1000, "Replaced by new connection")
                 }
                 activeWebSocket = conn
                 isPairedAndAuthenticated = false
+                clientIdentityPub = null
                 webSocketClient.customSender = { conn.send(it) }
                 webSocketClient.setServerConnected(true)
                 println("\n[SERVER] Android client connected from ${conn.remoteSocketAddress}")

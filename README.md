@@ -100,9 +100,9 @@ Security is at the foundation of Synco. Communication uses a robust Zero-Trust h
 ### 7. Persistent Background Connection
 - Foreground service with indefinite wake lock (refreshed every 4 min) keeps the Android app connected in the background — even after you swipe the app from recents.
 - Connection graph lives in a **process-lifetime singleton** owned by the `Application` (not tied to any Activity), so it survives the UI being destroyed.
-- Automatic reconnection on network loss with exponential backoff, plus **auto re-pair** from the stored PIN.
+- Automatic reconnection on network loss (up to 5 attempts, 3s apart), plus **auto re-pair** from the stored PIN. If the desktop rejected a stale PIN, it is cleared and the app prompts for the current PIN.
 - On process restart, the foreground service (START_STICKY) reconnects and re-pairs to the **last-known server automatically**.
-- Dual heartbeat mechanism (5s interval, 30s timeout) ensures timely disconnection detection.
+- Dual heartbeat mechanism (5s interval, 10s timeout) ensures timely disconnection detection.
 - **Note for Samsung/OEM devices:** set Synco to **Unrestricted / Never sleeping apps** in battery settings, or the OS may still kill the background process.
 
 ### 8. Background Desktop Daemon (System Tray + Autostart)
